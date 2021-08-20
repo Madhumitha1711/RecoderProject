@@ -214,7 +214,7 @@ function HomeScreen() {
 
         <Button icon="trash-can" labelStyle={{ fontSize: 35, color: "green" }} onPress={() => deleteFile(path)} />
 
-        <Button icon="share" labelStyle={{ fontSize: 35, color: "#99e6ff" }} onPress={() => shareFile(path)} />
+        <Button icon="share-variant" labelStyle={{ fontSize: 35, color: "#99e6ff" }} onPress={() => shareFile(path)} />
 
       </View>
     </Card> : <View />
