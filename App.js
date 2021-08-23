@@ -5,17 +5,16 @@ import {
   Slider, TouchableHighlight,
   Text, View, StyleSheet, FlatList, SafeAreaView, TouchableOpacity, TextInput
 } from 'react-native';
-import { Button, Card } from 'react-native-paper';
+import { Button, Card, Menu } from 'react-native-paper';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { Colors } from 'react-native/Libraries/NewAppScreen';
-import { green } from 'ansi-colors';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 const Stack = createNativeStackNavigator()
 
+//App startup - entry point
 export default function App() {
   return (
     <NavigationContainer>
@@ -37,45 +36,44 @@ function HomeScreen() {
   const [threshold, setThreshold] = React.useState(90);
   const [compress, setCompress] = React.useState(4);
 
-
-
-
   const [recordingSettings, setRecordingSettings] = React.useState(Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY);
+  const [isPlaying, setIsplaying] = React.useState(false);
 
-
+  //On Component load
   React.useEffect(() => {
-    console.log("In useeffect");
     getFileList();
     return sound
       ? () => {
-        console.log('Unloading Sound');
         sound.unloadAsync();
       }
       : undefined;
-  }, [getFileList, sound])
+  }, [getFileList])
 
+  //Get list of audio files in document directory 
   const getFileList = React.useCallback(async () => {
     let list = [];
     let dir = await FileSystem.readDirectoryAsync(FileSystem.documentDirectory);
     dir.forEach((val) => {
       let path = FileSystem.documentDirectory + val
-      let soundObj = new Audio.Sound();
-      soundObj.loadAsync({ uri: path }).then((obj) => {
-        soundObj.getStatusAsync().then((statusSound) => {
-          FileSystem.getInfoAsync(path).then((info) => {
-            list.push({ id: val, pathF: path, name: val, duration: getMMSSFromMillis(statusSound.durationMillis), ts: info.modificationTime });
-            setFileList(list);
-            console.log("file List-->" + JSON.stringify(filesList));
 
-          })
-        })
+      FileSystem.getInfoAsync(path).then((info) => {
+        list.push({
+          id: val,
+          pathF: path,
+          name: val,
+          duration: 0,
+          ts: info.modificationTime,
+          playDuration: null,
+          isPlaying: false
+        });
+        setFileList(list);
       }
       );
     });
   }, [])
 
 
-
+  //Listner function called while recording
   updateScreenForRecordingStatus = (status) => {
     if (status.canRecord) {
       setRecordingDuration(status.durationMillis);
@@ -91,6 +89,7 @@ function HomeScreen() {
     };
   }
 
+  //Start recording function
   async function startRecording() {
     try {
       console.log('Requesting permissions..');
@@ -111,8 +110,8 @@ function HomeScreen() {
     }
   }
 
+  //Function to get recording times
   function getRecordingTimestamp() {
-    console.log("e Insid getRecordingTimestamp-->" + getMMSSFromMillis(recordingDuration))
     if (recordingDuration != null) {
       return getMMSSFromMillis(recordingDuration);
     }
@@ -134,6 +133,8 @@ function HomeScreen() {
     };
     return padWithZero(minutes) + ":" + padWithZero(seconds);
   }
+
+  //On stop recording ,audio file copied from cache dir to permanent storage
   async function stopRecording() {
     console.log('Stopping recording..');
     await setFileName("");
@@ -159,22 +160,55 @@ function HomeScreen() {
     })
   }
   const renderItem = ({ item }) => (
-    <Item title={item.name} path={item.pathF} duration={item.duration} />
+    <Item title={item.name} path={item.pathF} duration={item.duration} playDuration={item.playDuration} isPlaying={item.isPlaying} />
   );
 
-  async function playSound(path) {
-    console.log("Inside play sound-->" + path);
-    console.log('Loading Sound');
+  //Callback fn while playing sound
+  async function onPlaybackStatusUpdate(status) {
+    let fsCopy = [...filesList]
+    fsCopy.forEach(item => {
+      console.log("uri-->" + item.pathF.uri)
+      if (item.pathF == "file://" + status.uri) {
+        if (status.isPlaying) {
+          item.playDuration = status.durationMillis - status.positionMillis
+          item.isPlaying = true;
+          item.duration = status.durationMillis
+
+        }
+        else {
+          item.playDuration = 0;
+          item.isPlaying = false;
+          item.duration = 0
+        }
+      }
+    })
+    setFileList(fsCopy);
+    console.log("fs copy-->" + JSON.stringify(fsCopy));
+
+    console.log("SOUND STATUS -->" + JSON.stringify(status));
+  }
+
+  async function updatePlayback(value, path) {
+    let fsCopy = [...filesList]
+    fsCopy.forEach(item => {
+      if (item.pathF == path) {
+        item.playDuration = status.durationMillis - value;
+      }
+    })
+    setFileList(fsCopy);
+    console.log("fs copy-->" + JSON.stringify(fsCopy));
+  }
+
+
+  async function playSound(path, playDuration) {
     const { sound } = await Audio.Sound.createAsync(
-      { uri: path }
+      { uri: path }, {}, onPlaybackStatusUpdate, true
     );
     setSound(sound);
-
-    console.log('Playing Sound');
     await sound.playAsync();
   }
 
-  async function stopSound() {
+  async function stopSound(path) {
     await sound.stopAsync();
   }
 
@@ -182,6 +216,7 @@ function HomeScreen() {
     await sound.pauseAsync();
   }
 
+  //Delete audio file fn
   async function deleteFile(path) {
     let fs = filesList.filter(f => f.pathF != path);
     setFileList(fs);
@@ -189,6 +224,7 @@ function HomeScreen() {
     getFileList();
   }
 
+  //Share file function
   async function shareFile(path) {
     if (!(await Sharing.isAvailableAsync())) {
       alert(`Uh oh, sharing isn't available on your platform`);
@@ -198,28 +234,53 @@ function HomeScreen() {
     await Sharing.shareAsync(path);
   }
 
-  const Item = ({ title, path, duration }) => (
-    title ? <Card style={{ margin: 2, backgroundColor: "#ffe6cc" }}>
-      <View style={{ flexDirection: 'row', alignItems: "center", justifyContent: "space-between" }}>
-        <TouchableOpacity onPress={() => playSound(path)} style={{ flex: 1 }}>
-          <View style={styles.item}>
-            <Text style={{ fontSize: 18 }}>{title}</Text>
+  //Cards with audioname, stop, delete and share options
+  const Item = ({ title, path, duration, playDuration, isPlaying }) => {
+    let visble = false;
+    return (
+      title ? <Card style={{ margin: 2, backgroundColor: "#ffe6cc" }}>
+        <View style={{ flexDirection: 'row', alignItems: "center", justifyContent: "space-between" }}>
+          <View style={{ flex: 1 }}>
+            <TouchableOpacity onPress={() => playSound(path, playDuration)} >
+              <View style={styles.item}>
+                <Text style={{ fontSize: 18 }}>{title}</Text>
+              </View>
+            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
-        <TouchableOpacity>
-          <Text>{duration}</Text>
-        </TouchableOpacity>
-        <Button icon="stop" labelStyle={{ fontSize: 35, color: "#ff471a" }}
-          onPress={stopSound} />
+          <View style={{ display: 'flex', flexDirection: 'row', justifyContent: "flex-end", alignItems: 'center' }}>
+            <Button icon={isPlaying ? "stop" : "play"} labelStyle={{ fontSize: 35, color: isPlaying ? "#ff471a" : "#e67300" }}
+              onPress={isPlaying ? () => stopSound(path) : () => playSound(path, playDuration)} />
 
-        <Button icon="trash-can" labelStyle={{ fontSize: 35, color: "green" }} onPress={() => deleteFile(path)} />
+            <Button icon="trash-can" labelStyle={{ fontSize: 30, color: "#e67300" }} onPress={() => deleteFile(path)} />
+            <Button icon="share-variant" labelStyle={{ fontSize: 30, color: "#e67300" }} onPress={() => shareFile(path)} />
 
-        <Button icon="share-variant" labelStyle={{ fontSize: 35, color: "#99e6ff" }} onPress={() => shareFile(path)} />
+          </View>
+        </View>
+        <View>
+          <View style={{ display: "flex", flexDirection: "row", justifyContent: "space-around", alignItems: "center" }}>
+            <View style={{ flex: 1 }}>
+              <Slider value={playDuration ? duration - playDuration : 0}
+                onValueChange={async (value) => {
+                  console.log("in value change")
+                  await updatePlayback(value, path)
+                }}
+                minimumValue={0}
+                maximumValue={duration}
+                step={1}
+                thumbTintColor="#e67300"
+                minimumTrackTintColor="#e67300"
+                trackStyle={{ height: 50 }}
+              />
+            </View>
+            <View style={{ marginHorizontal: 5 }}>
+              <Text style={{ fontSize: 16, color: playDuration ? "#ff471a" : "black" }}>{playDuration ? getMMSSFromMillis(playDuration) : getMMSSFromMillis(duration)}</Text>
+            </View>
+          </View>
+        </View>
+      </Card> : <View />
 
-      </View>
-    </Card> : <View />
-
-  );
+    )
+  };
 
   function sortedFileList() {
     if (filesList.length > 0) {
@@ -232,6 +293,7 @@ function HomeScreen() {
     }
   }
 
+  //Render function
   return (
     <SafeAreaView style={styles.container}>
       <View style={{ display: "flex", flexDirection: 'row', alignContent: "center", justifyContent: "space-between", marginTop: 20 }}>
@@ -250,7 +312,7 @@ function HomeScreen() {
             <Button
               style={{ marginLeft: 20 }}
               labelStyle={{ fontSize: 35, color: fileName ? recording ? "red" : "green" : "grey" }}
-              icon="microphone"
+              icon="record-circle"
               onPress={recording ? stopRecording : startRecording}
               disabled={fileName ? false : true}
             />
@@ -262,15 +324,15 @@ function HomeScreen() {
       </View>
 
       <View style={{ marginTop: 10, flexDirection: 'row' }}>
-        <Text style={{ fontSize: 18, color: 'black' }} >dbFS :</Text>
-        <Text style={{ fontSize: 18, color: '#e67300' }} > {metering}</Text>
+        <Text style={{ fontSize: 18, color: 'black' }} >Metering</Text>
+        <Text style={{ fontSize: 18, color: '#e67300' }} > {metering} dbFS</Text>
       </View>
 
       <View style={{ paddingVertical: 10 }}>
         <View style={{ marginTop: 10, flexDirection: 'row' }}>
 
           <Text style={{ fontSize: 18 }}>Threshold Value :</Text>
-          <Text style={{ fontSize: 18, color: '#e67300' }}>{threshold}</Text>
+          <Text style={{ fontSize: 18, color: '#e67300' }}>{threshold} dB</Text>
         </View>
         <Slider value={threshold}
           onValueChange={(value) => setThreshold(value)}
@@ -287,7 +349,7 @@ function HomeScreen() {
         <View style={{ marginTop: 10, flexDirection: 'row' }}>
 
           <Text style={{ fontSize: 18 }}>Compress Level :</Text>
-          <Text style={{ fontSize: 18, color: '#e67300' }}>{compress}</Text>
+          <Text style={{ fontSize: 18, color: '#e67300' }}>{compress} dB</Text>
         </View>
         <Slider value={compress}
           onValueChange={(value) => setCompress(value)}
@@ -301,11 +363,11 @@ function HomeScreen() {
       </View>
 
 
-      <View style={{ height: 300 }}>
+      <View style={{ flex: 1 }}>
         {filesList.length > 0 && <FlatList
           data={sortedFileList()}
           renderItem={renderItem}
-          keyExtractor={(item, index) => { return item.ts+'' }}
+          keyExtractor={(item, index) => { return item.ts + '' }}
 
         />}
       </View>

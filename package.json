@@ -21,6 +21,7 @@
     "react-native-gesture-handler": "^1.10.3",
     "react-native-paper": "^4.9.2",
     "react-native-slider": "^0.11.0",
+    "react-native-sound-level": "^1.1.5",
     "react-native-sound-recorder": "^1.5.0",
     "react-native-web": "~0.13.12"
   },
