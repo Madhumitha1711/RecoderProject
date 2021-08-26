@@ -64,7 +64,8 @@ function HomeScreen() {
           duration: 0,
           ts: info.modificationTime,
           playDuration: null,
-          isPlaying: false
+          isPlaying: false,
+          soundObj: null,
         });
         setFileList(list);
       }
@@ -118,8 +119,6 @@ function HomeScreen() {
     return getMMSSFromMillis(0);
   }
   function getMMSSFromMillis(millis) {
-
-    console.log("millies--->" + millis)
     const totalSeconds = millis / 1000;
     const seconds = Math.floor(totalSeconds % 60);
     const minutes = Math.floor(totalSeconds / 60);
@@ -160,7 +159,13 @@ function HomeScreen() {
     })
   }
   const renderItem = ({ item }) => (
-    <Item title={item.name} path={item.pathF} duration={item.duration} playDuration={item.playDuration} isPlaying={item.isPlaying} />
+    <Item
+      soundObj={item.soundObj}
+      title={item.name}
+      path={item.pathF}
+      duration={item.duration}
+      playDuration={item.playDuration}
+      isPlaying={item.isPlaying} />
   );
 
   //Callback fn while playing sound
@@ -169,47 +174,63 @@ function HomeScreen() {
     fsCopy.forEach(item => {
       console.log("uri-->" + item.pathF.uri)
       if (item.pathF == "file://" + status.uri) {
+        item.playDuration = status.durationMillis - status.positionMillis
+
         if (status.isPlaying) {
-          item.playDuration = status.durationMillis - status.positionMillis
           item.isPlaying = true;
           item.duration = status.durationMillis
 
         }
         else {
-          item.playDuration = 0;
           item.isPlaying = false;
+          item.duration = status.durationMillis
+        }
+
+        if (status.didJustFinish) {
           item.duration = 0
+          item.soundObj = null
         }
       }
     })
     setFileList(fsCopy);
-    console.log("fs copy-->" + JSON.stringify(fsCopy));
 
     console.log("SOUND STATUS -->" + JSON.stringify(status));
   }
 
-  async function updatePlayback(value, path) {
+  async function updatePlayback(duration, value, path) {
+    console.log("changed value--->" + value)
     let fsCopy = [...filesList]
     fsCopy.forEach(item => {
       if (item.pathF == path) {
-        item.playDuration = status.durationMillis - value;
+        item.playDuration = duration - value;
       }
     })
     setFileList(fsCopy);
-    console.log("fs copy-->" + JSON.stringify(fsCopy));
   }
 
 
-  async function playSound(path, playDuration) {
-    const { sound } = await Audio.Sound.createAsync(
-      { uri: path }, {}, onPlaybackStatusUpdate, true
-    );
-    setSound(sound);
-    await sound.playAsync();
+  async function playSound(path, playDuration, soundObj) {
+    if (soundObj == null) {
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: path }, { shouldPlay: true }, onPlaybackStatusUpdate, true
+      );
+
+      let fsCopy = [...filesList]
+      fsCopy.forEach(item => {
+        if (item.pathF == path) {
+          item.soundObj = sound;
+        }
+      })
+      setFileList(fsCopy);
+      await sound.playAsync();
+    }
+    else {
+      await soundObj.playAsync();
+    }
   }
 
-  async function stopSound(path) {
-    await sound.stopAsync();
+  async function stopSound(path, soundObj) {
+    await soundObj.setStatusAsync({ shouldPlay: false });
   }
 
   async function pauseSound() {
@@ -235,7 +256,7 @@ function HomeScreen() {
   }
 
   //Cards with audioname, stop, delete and share options
-  const Item = ({ title, path, duration, playDuration, isPlaying }) => {
+  const Item = ({ title, path, duration, playDuration, isPlaying, soundObj }) => {
     let visble = false;
     return (
       title ? <Card style={{ margin: 2, backgroundColor: "#ffe6cc" }}>
@@ -249,7 +270,7 @@ function HomeScreen() {
           </View>
           <View style={{ display: 'flex', flexDirection: 'row', justifyContent: "flex-end", alignItems: 'center' }}>
             <Button icon={isPlaying ? "stop" : "play"} labelStyle={{ fontSize: 35, color: isPlaying ? "#ff471a" : "#e67300" }}
-              onPress={isPlaying ? () => stopSound(path) : () => playSound(path, playDuration)} />
+              onPress={isPlaying ? () => stopSound(path, soundObj) : () => playSound(path, playDuration, soundObj)} />
 
             <Button icon="trash-can" labelStyle={{ fontSize: 30, color: "#e67300" }} onPress={() => deleteFile(path)} />
             <Button icon="share-variant" labelStyle={{ fontSize: 30, color: "#e67300" }} onPress={() => shareFile(path)} />
@@ -262,7 +283,9 @@ function HomeScreen() {
               <Slider value={playDuration ? duration - playDuration : 0}
                 onValueChange={async (value) => {
                   console.log("in value change")
-                  await updatePlayback(value, path)
+                  //stopSound(path, soundObj);
+                  //soundObj.playAsync(value);
+                  //await updatePlayback(duration, value, path)
                 }}
                 minimumValue={0}
                 maximumValue={duration}
