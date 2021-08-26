@@ -175,15 +175,14 @@ function HomeScreen() {
       console.log("uri-->" + item.pathF.uri)
       if (item.pathF == "file://" + status.uri) {
         item.playDuration = status.durationMillis - status.positionMillis
+        item.duration = status.durationMillis
 
         if (status.isPlaying) {
           item.isPlaying = true;
-          item.duration = status.durationMillis
 
         }
         else {
           item.isPlaying = false;
-          item.duration = status.durationMillis
         }
 
         if (status.didJustFinish) {
@@ -262,11 +261,9 @@ function HomeScreen() {
       title ? <Card style={{ margin: 2, backgroundColor: "#ffe6cc" }}>
         <View style={{ flexDirection: 'row', alignItems: "center", justifyContent: "space-between" }}>
           <View style={{ flex: 1 }}>
-            <TouchableOpacity onPress={() => playSound(path, playDuration)} >
-              <View style={styles.item}>
-                <Text style={{ fontSize: 18 }}>{title}</Text>
-              </View>
-            </TouchableOpacity>
+            <View style={styles.item}>
+              <Text style={{ fontSize: 18 }}>{title}</Text>
+            </View>
           </View>
           <View style={{ display: 'flex', flexDirection: 'row', justifyContent: "flex-end", alignItems: 'center' }}>
             <Button icon={isPlaying ? "stop" : "play"} labelStyle={{ fontSize: 35, color: isPlaying ? "#ff471a" : "#e67300" }}
